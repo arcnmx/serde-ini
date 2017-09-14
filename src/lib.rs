@@ -7,12 +7,6 @@ extern crate result;
 #[macro_use]
 extern crate serde;
 
-/*mod de;
-mod ser;
-mod error;
-
-pub use error::{Error, Result};*/
-
 pub mod de;
 pub mod ser;
 
@@ -20,3 +14,6 @@ pub mod parse;
 pub mod write;
 
 pub use de::Deserializer;
+pub use ser::Serializer;
+pub use parse::{Parser, Item};
+pub use write::{Writer, LineEnding};
