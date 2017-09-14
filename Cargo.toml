@@ -1,0 +1,16 @@
+[package]
+name = "serde_ini"
+version = "0.0.1"
+authors = ["arcnmx"]
+
+description = "Windows INI file {de,}serialization"
+keywords = ["ini", "cfg", "serde"]
+
+documentation = "http://arcnmx.github.io/serde-ini/serde_ini"
+repository = "https://github.com/arcnmx/serde-ini"
+readme = "README.md"
+license = "MIT"
+
+[dependencies]
+serde = "^1.0.0"
+result = "^0.0.1"
