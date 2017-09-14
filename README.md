@@ -10,7 +10,7 @@ Sequences, tuples, bytes, bools, and some other data types are not supported.
 
 ## [Documentation][docs]
 
-See the [documentation][docs] for up to date information.
+See the [documentation][docs] for up to date API documentation.
 
 [travis-badge]: https://img.shields.io/travis/arcnmx/serde-ini/master.svg?style=flat-square
 [travis]: https://travis-ci.org/arcnmx/serde-ini
