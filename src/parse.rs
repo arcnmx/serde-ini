@@ -104,13 +104,14 @@ impl<R: io::Read> Parser<io::Lines<io::BufReader<R>>> {
     }
 }
 
-impl<E, T: Iterator<Item=Result<String, E>>> Parser<T> {
-    fn parse_next(&mut self) -> Result<Option<Item>, Error<E>> {
-        let line = match self.input.next() {
+impl<T> Parser<T> {
+    fn parse_next<E, S: AsRef<str>>(line: Option<Result<S, E>>) -> Result<Option<Item>, Error<E>> {
+        let line = match line {
             Some(Ok(line)) => line,
             Some(Err(e)) => return Err(Error::Inner(e)),
             None => return Ok(None),
         };
+        let line = line.as_ref();
 
         if line.starts_with('[') {
             if line.ends_with(']') {
@@ -127,7 +128,7 @@ impl<E, T: Iterator<Item=Result<String, E>>> Parser<T> {
             }
         } else if line.starts_with(';') {
             Ok(Some(Item::Comment {
-                text: line,
+                text: line.into(),
             }))
         } else {
             let mut line = line.splitn(2, '=');
@@ -149,11 +150,11 @@ impl<E, T: Iterator<Item=Result<String, E>>> Parser<T> {
     }
 }
 
-impl<E, T: Iterator<Item=Result<String, E>>> Iterator for Parser<T> {
+impl<E, S: AsRef<str>, T: Iterator<Item=Result<S, E>>> Iterator for Parser<T> {
     type Item = Result<Item, Error<E>>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.parse_next().invert()
+        Self::parse_next(self.input.next()).invert()
     }
 }
 
