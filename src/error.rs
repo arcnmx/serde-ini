@@ -12,6 +12,12 @@ impl Display for Error {
     }
 }
 
+impl From<super::de::Error> for Error {
+    fn from(e: super::de::Error) -> Self {
+        Error::Custom(e.to_string())
+    }
+}
+
 impl ::std::error::Error for Error {
     fn description(&self) -> &str {
         "INI serialization error"
