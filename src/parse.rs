@@ -88,8 +88,8 @@ impl<T> Parser<T> {
 }
 
 impl<'a> Parser<OkIter<str::Lines<'a>>> {
-    pub fn from_str<S: AsRef<str> + 'a>(s: &'a S) -> Self {
-        Self::new(OkIter(s.as_ref().lines()))
+    pub fn from_str(s: &'a str) -> Self {
+        Self::new(OkIter(s.lines()))
     }
 }
 
