@@ -1,5 +1,6 @@
 use std::{io, fmt, error, str};
 use result::prelude::*;
+use void::Void;
 
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Debug)]
 pub enum Item {
@@ -157,7 +158,6 @@ impl<E, S: AsRef<str>, T: Iterator<Item=Result<S, E>>> Iterator for Parser<T> {
     }
 }
 
-pub enum Void { }
 pub struct OkIter<I>(pub I);
 
 impl<T, I: Iterator<Item=T>> Iterator for OkIter<I> {
