@@ -13,4 +13,4 @@ license = "MIT"
 
 [dependencies]
 serde = "^1.0.0"
-result = "^0.0.1"
+result = "^1.0.0"

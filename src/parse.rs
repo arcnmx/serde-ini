@@ -1,5 +1,5 @@
 use std::{io, fmt, error, str};
-use result::OptionResultExt;
+use result::prelude::*;
 
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Debug)]
 pub enum Item {
@@ -105,10 +105,9 @@ impl<R: io::Read> Parser<io::Lines<io::BufReader<R>>> {
 }
 
 impl<T> Parser<T> {
-    fn parse_next<E, S: AsRef<str>>(line: Option<Result<S, E>>) -> Result<Option<Item>, Error<E>> {
+    fn parse_next<E, S: AsRef<str>>(line: Option<S>) -> Result<Option<Item>, Error<E>> {
         let line = match line {
-            Some(Ok(line)) => line,
-            Some(Err(e)) => return Err(Error::Inner(e)),
+            Some(line) => line,
             None => return Ok(None),
         };
         let line = line.as_ref();
@@ -154,7 +153,7 @@ impl<E, S: AsRef<str>, T: Iterator<Item=Result<S, E>>> Iterator for Parser<T> {
     type Item = Result<Item, Error<E>>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        Self::parse_next(self.input.next()).invert()
+        self.input.next_invert().map_err(Error::Inner).and_then(|l| Self::parse_next(l)).invert()
     }
 }
 
