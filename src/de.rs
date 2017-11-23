@@ -1,7 +1,7 @@
 use std::fmt::{self, Display};
 use std::str::FromStr;
 use std::mem::replace;
-use std::{result, error, num};
+use std::{error, io, num, result, str};
 use serde::de::{self, DeserializeSeed, Visitor, MapAccess, IntoDeserializer};
 use parse::{self, Item};
 
@@ -171,6 +171,13 @@ impl<T: Trait> Deserializer<T> {
             _ => Err(Error::InvalidState),
         }
     }
+
+    pub(crate) fn end(&mut self) -> Result<()> {
+        if let Ok(None) = self.peek_item() {
+            return Ok(())
+        }
+        Err(Error::InvalidState)
+    }
 }
 
 impl<'de, 'a, T: Trait> de::Deserializer<'de> for &'a mut Deserializer<T> {
@@ -188,6 +195,24 @@ impl<'de, 'a, T: Trait> de::Deserializer<'de> for &'a mut Deserializer<T> {
         bool i8 i16 i32 i64 u8 u16 u32 u64 f32 f64 char str string bytes
         byte_buf unit unit_struct newtype_struct seq tuple tuple_struct
         map struct identifier ignored_any enum
+    }
+}
+
+impl<R> Deserializer<parse::Parser<io::Lines<R>>>
+    where
+    R: io::BufRead,
+{
+    /// Creates an INI deserializer from an `io::BufRead`.
+    pub fn from_bufread(reader: R) -> Self {
+        Deserializer::new(parse::Parser::from_bufread(reader))
+    }
+}
+
+impl<'a> Deserializer<parse::Parser<parse::OkIter<str::Lines<'a>>>>
+{
+    /// Creates an INI deserializer from an `&str`.
+    pub fn from_str<S: AsRef<str> + 'a>(s: &'a S) -> Self {
+        Deserializer::new(parse::Parser::from_str(s.as_ref()))
     }
 }
 

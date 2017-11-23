@@ -49,9 +49,21 @@ fn expected() -> TestModel {
 
 #[test]
 fn smoke_de() {
-    assert_eq!(expected(), TestModel::deserialize(&mut Deserializer::new(Parser::from_str(TEST_INPUT))).unwrap());
-
+    // Parser
     assert_eq!(expected(), TestModel::deserialize(&mut Deserializer::new(Parser::from_read(TEST_INPUT.as_bytes()))).unwrap());
+    assert_eq!(expected(), TestModel::deserialize(&mut Deserializer::new(Parser::from_str(&TEST_INPUT))).unwrap());
+
+    // Deserializer
+    let bufrd = std::io::BufReader::new(TEST_INPUT.as_bytes());
+    assert_eq!(expected(), TestModel::deserialize(&mut Deserializer::from_bufread(bufrd)).unwrap());
+    assert_eq!(expected(), TestModel::deserialize(&mut Deserializer::from_str(&TEST_INPUT)).unwrap());
+
+    // Static methods
+    let bufrd = std::io::BufReader::new(TEST_INPUT.as_bytes());
+    let de_bufrd: TestModel = serde_ini::from_bufread(bufrd).unwrap();
+    let de_str: TestModel = serde_ini::from_str(&TEST_INPUT).unwrap();
+    assert_eq!(expected(), de_bufrd);
+    assert_eq!(expected(), de_str);
 }
 
 #[test]
