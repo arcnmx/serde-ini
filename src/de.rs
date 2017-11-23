@@ -172,11 +172,12 @@ impl<T: Trait> Deserializer<T> {
         }
     }
 
-    pub(crate) fn end(&mut self) -> Result<()> {
-        if let Ok(None) = self.peek_item() {
-            return Ok(())
+    fn assert_eof(&mut self) -> Result<()> {
+        self.populate();
+        match self.peek_item()? {
+            Some(..) => Err(Error::InvalidState),
+            None => Ok(()),
         }
-        Err(Error::InvalidState)
     }
 }
 
@@ -498,8 +499,7 @@ pub fn from_str<'a, T>(s: &'a str) -> Result<T>
     let mut de = Deserializer::new(parse::Parser::from_str(s.as_ref()));
     let value = Deserialize::deserialize(&mut de)?;
 
-    // Make sure the whole stream has been consumed.
-    de.end()?;
+    de.assert_eof()?;
     Ok(value)
 }
 
@@ -512,8 +512,7 @@ pub fn from_bufread<'a, R, T>(reader: R) -> Result<T>
     let mut de = Deserializer::new(parse::Parser::from_bufread(reader));
     let value = Deserialize::deserialize(&mut de)?;
 
-    // Make sure the whole stream has been consumed.
-    de.end()?;
+    de.assert_eof()?;
     Ok(value)
 
 }
@@ -527,8 +526,7 @@ pub fn from_read<'a, R, T>(reader: R) -> Result<T>
     let mut de = Deserializer::new(parse::Parser::from_read(reader));
     let value = Deserialize::deserialize(&mut de)?;
 
-    // Make sure the whole stream has been consumed.
-    de.end()?;
+    de.assert_eof()?;
     Ok(value)
 
 }
