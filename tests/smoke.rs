@@ -3,7 +3,6 @@ extern crate serde_derive;
 extern crate serde;
 extern crate serde_ini;
 
-use std::io::BufReader;
 use serde::{Deserialize, Serialize};
 use serde_ini::{Deserializer, Serializer, Parser, Writer, LineEnding};
 
@@ -51,24 +50,19 @@ fn expected() -> TestModel {
 #[test]
 fn smoke_de() {
     // Parser
-    assert_eq!(expected(), TestModel::deserialize(&mut Deserializer::new(Parser::from_bufread(BufReader::new(TEST_INPUT.as_bytes())))).unwrap());
+    assert_eq!(expected(), TestModel::deserialize(&mut Deserializer::new(Parser::from_bufread(TEST_INPUT.as_bytes()))).unwrap());
     assert_eq!(expected(), TestModel::deserialize(&mut Deserializer::new(Parser::from_read(TEST_INPUT.as_bytes()))).unwrap());
-    assert_eq!(expected(), TestModel::deserialize(&mut Deserializer::new(Parser::from_str(&TEST_INPUT))).unwrap());
+    assert_eq!(expected(), TestModel::deserialize(&mut Deserializer::new(Parser::from_str(TEST_INPUT))).unwrap());
 
     // Deserializer
-    let bufrd = BufReader::new(TEST_INPUT.as_bytes());
-    assert_eq!(expected(), TestModel::deserialize(&mut Deserializer::from_bufread(bufrd)).unwrap());
+    assert_eq!(expected(), TestModel::deserialize(&mut Deserializer::from_bufread(TEST_INPUT.as_bytes())).unwrap());
     assert_eq!(expected(), TestModel::deserialize(&mut Deserializer::from_read(TEST_INPUT.as_bytes())).unwrap());
-    assert_eq!(expected(), TestModel::deserialize(&mut Deserializer::from_str(&TEST_INPUT)).unwrap());
+    assert_eq!(expected(), TestModel::deserialize(&mut Deserializer::from_str(TEST_INPUT)).unwrap());
 
     // Static methods
-    let bufrd = BufReader::new(TEST_INPUT.as_bytes());
-    let de_bufrd: TestModel = serde_ini::from_bufread(bufrd).unwrap();
-    let de_rd: TestModel = serde_ini::from_read(TEST_INPUT.as_bytes()).unwrap();
-    let de_str: TestModel = serde_ini::from_str(&TEST_INPUT).unwrap();
-    assert_eq!(expected(), de_bufrd);
-    assert_eq!(expected(), de_rd);
-    assert_eq!(expected(), de_str);
+    assert_eq!(expected(), serde_ini::from_bufread::<_, TestModel>(TEST_INPUT.as_bytes()).unwrap());
+    assert_eq!(expected(), serde_ini::from_read::<_, TestModel>(TEST_INPUT.as_bytes()).unwrap());
+    assert_eq!(expected(), serde_ini::from_str::<TestModel>(TEST_INPUT).unwrap());
 }
 
 #[test]

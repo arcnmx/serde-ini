@@ -199,10 +199,7 @@ impl<'de, 'a, T: Trait> de::Deserializer<'de> for &'a mut Deserializer<T> {
     }
 }
 
-impl<R> Deserializer<parse::Parser<io::Lines<R>>>
-    where
-    R: io::BufRead,
-{
+impl<R: io::BufRead> Deserializer<parse::Parser<io::Lines<R>>> {
     /// Creates an INI deserializer from an `io::BufRead`.
     pub fn from_bufread(reader: R) -> Self {
         Deserializer::new(parse::Parser::from_bufread(reader))
@@ -216,11 +213,10 @@ impl<R: io::Read> Deserializer<parse::Parser<io::Lines<io::BufReader<R>>>> {
     }
 }
 
-impl<'a> Deserializer<parse::Parser<parse::OkIter<str::Lines<'a>>>>
-{
+impl<'a> Deserializer<parse::Parser<parse::OkIter<str::Lines<'a>>>> {
     /// Creates an INI deserializer from a `&str`.
-    pub fn from_str<S: AsRef<str> + 'a>(s: &'a S) -> Self {
-        Deserializer::new(parse::Parser::from_str(s.as_ref()))
+    pub fn from_str(s: &'a str) -> Self {
+        Deserializer::new(parse::Parser::from_str(s))
     }
 }
 
@@ -520,7 +516,7 @@ pub fn from_bufread<'a, R, T>(reader: R) -> Result<T>
 /// Deserialize an instance of type `T` from a stream of INI data.
 pub fn from_read<'a, R, T>(reader: R) -> Result<T>
     where
-    R: io::BufRead,
+    R: io::Read,
     T: Deserialize<'a>,
 {
     let mut de = Deserializer::new(parse::Parser::from_read(reader));
