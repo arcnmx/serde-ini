@@ -2,7 +2,7 @@ use std::fmt::{self, Display};
 use std::str::FromStr;
 use std::mem::replace;
 use std::{error, io, num, result, str};
-use serde::de::{self, Deserialize, DeserializeSeed, Visitor, MapAccess, IntoDeserializer};
+use serde::de::{self, Deserialize, DeserializeOwned, DeserializeSeed, Visitor, MapAccess, IntoDeserializer};
 use parse::{self, Item};
 
 pub trait Trait {
@@ -488,10 +488,7 @@ impl<'de, 'a> VariantAccess<'de> for Enum<'a, 'de> {
 }*/
 
 /// Deserialize an instance of type `T` from a string of INI text.
-pub fn from_str<'a, T>(s: &'a str) -> Result<T>
-    where
-    T: Deserialize<'a>,
-{
+pub fn from_str<T: DeserializeOwned>(s: &str) -> Result<T> {
     let mut de = Deserializer::new(parse::Parser::from_str(s.as_ref()));
     let value = Deserialize::deserialize(&mut de)?;
 
@@ -500,29 +497,19 @@ pub fn from_str<'a, T>(s: &'a str) -> Result<T>
 }
 
 /// Deserialize an instance of type `T` from a buffered IO stream of INI.
-pub fn from_bufread<'a, R, T>(reader: R) -> Result<T>
-    where
-    R: io::BufRead,
-    T: Deserialize<'a>,
-{
+pub fn from_bufread<R: io::BufRead, T: DeserializeOwned>(reader: R) -> Result<T> {
     let mut de = Deserializer::new(parse::Parser::from_bufread(reader));
     let value = Deserialize::deserialize(&mut de)?;
 
     de.assert_eof()?;
     Ok(value)
-
 }
 
 /// Deserialize an instance of type `T` from a stream of INI data.
-pub fn from_read<'a, R, T>(reader: R) -> Result<T>
-    where
-    R: io::Read,
-    T: Deserialize<'a>,
-{
+pub fn from_read<R: io::Read, T: DeserializeOwned>(reader: R) -> Result<T> {
     let mut de = Deserializer::new(parse::Parser::from_read(reader));
     let value = Deserialize::deserialize(&mut de)?;
 
     de.assert_eof()?;
     Ok(value)
-
 }
