@@ -2,7 +2,7 @@ use std::fmt::{self, Display};
 use std::str::FromStr;
 use std::mem::replace;
 use std::{error, io, num, result, str};
-use serde::de::{self, DeserializeSeed, Visitor, MapAccess, IntoDeserializer};
+use serde::de::{self, Deserialize, DeserializeSeed, Visitor, MapAccess, IntoDeserializer};
 use parse::{self, Item};
 
 pub trait Trait {
@@ -46,7 +46,7 @@ impl Display for Error {
     }
 }
 
-impl ::std::error::Error for Error {
+impl error::Error for Error {
     fn description(&self) -> &str {
         "INI deserialization error"
     }
@@ -208,9 +208,16 @@ impl<R> Deserializer<parse::Parser<io::Lines<R>>>
     }
 }
 
+impl<R: io::Read> Deserializer<parse::Parser<io::Lines<io::BufReader<R>>>> {
+    /// Creates an INI deserializer from a reader.
+    pub fn from_read(reader: R) -> Self {
+        Deserializer::new(parse::Parser::from_read(reader))
+    }
+}
+
 impl<'a> Deserializer<parse::Parser<parse::OkIter<str::Lines<'a>>>>
 {
-    /// Creates an INI deserializer from an `&str`.
+    /// Creates an INI deserializer from a `&str`.
     pub fn from_str<S: AsRef<str> + 'a>(s: &'a S) -> Self {
         Deserializer::new(parse::Parser::from_str(s.as_ref()))
     }
@@ -482,3 +489,46 @@ impl<'de, 'a> VariantAccess<'de> for Enum<'a, 'de> {
         de::Deserializer::deserialize_map(self.de, visitor)
     }
 }*/
+
+/// Deserialize an instance of type `T` from a string of INI text.
+pub fn from_str<'a, T>(s: &'a str) -> Result<T>
+    where
+    T: Deserialize<'a>,
+{
+    let mut de = Deserializer::new(parse::Parser::from_str(s.as_ref()));
+    let value = Deserialize::deserialize(&mut de)?;
+
+    // Make sure the whole stream has been consumed.
+    de.end()?;
+    Ok(value)
+}
+
+/// Deserialize an instance of type `T` from a buffered IO stream of INI.
+pub fn from_bufread<'a, R, T>(reader: R) -> Result<T>
+    where
+    R: io::BufRead,
+    T: Deserialize<'a>,
+{
+    let mut de = Deserializer::new(parse::Parser::from_bufread(reader));
+    let value = Deserialize::deserialize(&mut de)?;
+
+    // Make sure the whole stream has been consumed.
+    de.end()?;
+    Ok(value)
+
+}
+
+/// Deserialize an instance of type `T` from a stream of INI data.
+pub fn from_read<'a, R, T>(reader: R) -> Result<T>
+    where
+    R: io::BufRead,
+    T: Deserialize<'a>,
+{
+    let mut de = Deserializer::new(parse::Parser::from_read(reader));
+    let value = Deserialize::deserialize(&mut de)?;
+
+    // Make sure the whole stream has been consumed.
+    de.end()?;
+    Ok(value)
+
+}

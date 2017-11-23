@@ -3,6 +3,7 @@ extern crate serde_derive;
 extern crate serde;
 extern crate serde_ini;
 
+use std::io::BufReader;
 use serde::{Deserialize, Serialize};
 use serde_ini::{Deserializer, Serializer, Parser, Writer, LineEnding};
 
@@ -50,19 +51,23 @@ fn expected() -> TestModel {
 #[test]
 fn smoke_de() {
     // Parser
+    assert_eq!(expected(), TestModel::deserialize(&mut Deserializer::new(Parser::from_bufread(BufReader::new(TEST_INPUT.as_bytes())))).unwrap());
     assert_eq!(expected(), TestModel::deserialize(&mut Deserializer::new(Parser::from_read(TEST_INPUT.as_bytes()))).unwrap());
     assert_eq!(expected(), TestModel::deserialize(&mut Deserializer::new(Parser::from_str(&TEST_INPUT))).unwrap());
 
     // Deserializer
-    let bufrd = std::io::BufReader::new(TEST_INPUT.as_bytes());
+    let bufrd = BufReader::new(TEST_INPUT.as_bytes());
     assert_eq!(expected(), TestModel::deserialize(&mut Deserializer::from_bufread(bufrd)).unwrap());
+    assert_eq!(expected(), TestModel::deserialize(&mut Deserializer::from_read(TEST_INPUT.as_bytes())).unwrap());
     assert_eq!(expected(), TestModel::deserialize(&mut Deserializer::from_str(&TEST_INPUT)).unwrap());
 
     // Static methods
-    let bufrd = std::io::BufReader::new(TEST_INPUT.as_bytes());
+    let bufrd = BufReader::new(TEST_INPUT.as_bytes());
     let de_bufrd: TestModel = serde_ini::from_bufread(bufrd).unwrap();
+    let de_rd: TestModel = serde_ini::from_read(TEST_INPUT.as_bytes()).unwrap();
     let de_str: TestModel = serde_ini::from_str(&TEST_INPUT).unwrap();
     assert_eq!(expected(), de_bufrd);
+    assert_eq!(expected(), de_rd);
     assert_eq!(expected(), de_str);
 }
 
@@ -73,5 +78,5 @@ fn smoke_en() {
     let mut data = Vec::<u8>::new();
     model.serialize(&mut Serializer::new(Writer::new(&mut data, LineEnding::default()))).unwrap();
 
-    assert_eq!(model, TestModel::deserialize(&mut Deserializer::new(Parser::from_read(&data[..]))).unwrap());
+    assert_eq!(model, serde_ini::from_read::<_, TestModel>(&data[..]).unwrap());
 }
