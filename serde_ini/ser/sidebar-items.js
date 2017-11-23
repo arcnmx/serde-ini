@@ -1,1 +1,1 @@
-initSidebarItems({"enum":[["Error",""],["UnsupportedType",""]],"struct":[["MapSerializer",""],["Serializer",""]],"type":[["Result",""]]});
+initSidebarItems({"enum":[["Error",""],["UnsupportedType",""]],"fn":[["to_string",""],["to_vec",""],["to_writer",""]],"struct":[["MapSerializer",""],["Serializer",""]],"type":[["Result",""]]});
