@@ -3,8 +3,8 @@ extern crate serde_derive;
 extern crate serde;
 extern crate serde_ini;
 
-use serde::{Deserialize, Serialize};
-use serde_ini::{Deserializer, Serializer, Parser, Writer, LineEnding};
+use serde::Deserialize;
+use serde_ini::{Deserializer, Parser};
 
 #[derive(Deserialize, Serialize, Clone, PartialEq, Default, Debug)]
 struct TestModel {
@@ -69,8 +69,7 @@ fn smoke_de() {
 fn smoke_en() {
     let model = expected();
 
-    let mut data = Vec::<u8>::new();
-    model.serialize(&mut Serializer::new(Writer::new(&mut data, LineEnding::default()))).unwrap();
+    let mut data = serde_ini::to_vec(&model).unwrap();
 
     assert_eq!(model, serde_ini::from_read::<_, TestModel>(&data[..]).unwrap());
 }

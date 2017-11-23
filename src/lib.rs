@@ -15,6 +15,6 @@ pub mod ser;
 pub mod write;
 
 pub use de::{Deserializer, from_str, from_bufread, from_read};
-pub use ser::Serializer;
+pub use ser::{Serializer, to_string, to_vec, to_writer};
 pub use parse::{Parser, Item};
 pub use write::{Writer, LineEnding};

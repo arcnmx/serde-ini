@@ -541,3 +541,21 @@ impl<'a, W: Write> ser::SerializeStruct for MapSerializer<'a, W> {
         Ok(())
     }
 }
+
+pub fn to_writer<W: Write, T: Serialize + ?Sized>(writer: W, value: &T) -> Result<()> {
+    let mut ser = Serializer::new(Writer::new(writer, Default::default()));
+
+    value.serialize(&mut ser)
+}
+
+pub fn to_vec<T: Serialize + ?Sized>(value: &T) -> Result<Vec<u8>> {
+    let mut writer = Vec::with_capacity(128);
+    to_writer(&mut writer, value).map(|_| writer)
+}
+
+pub fn to_string<T: Serialize + ?Sized>(value: &T) -> Result<String> {
+    let vec = to_vec(value)?;
+
+    // does not emit invalid utf8
+    Ok(unsafe { String::from_utf8_unchecked(vec) })
+}
