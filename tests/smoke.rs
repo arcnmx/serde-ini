@@ -25,6 +25,7 @@ key2=255
 key2=256
 key1=value2
 
+# We also treat hash as a comment character.
 [map2]
 key1=value3
 key2=257

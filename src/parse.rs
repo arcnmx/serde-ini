@@ -126,7 +126,7 @@ impl<T> Parser<T> {
             } else {
                 Err(Error::Syntax(SyntaxError::SectionNotClosed))
             }
-        } else if line.starts_with(';') {
+        } else if line.starts_with(';') || line.starts_with('#') {
             Ok(Some(Item::Comment {
                 text: line.into(),
             }))
