@@ -341,7 +341,7 @@
             } <span class="kw">else</span> {
                 <span class="prelude-val">Err</span>(<span class="ident">Error</span>::<span class="ident">Syntax</span>(<span class="ident">SyntaxError</span>::<span class="ident">SectionNotClosed</span>))
             }
-        } <span class="kw">else</span> <span class="kw">if</span> <span class="ident">line</span>.<span class="ident">starts_with</span>(<span class="string">&#39;;&#39;</span>) {
+        } <span class="kw">else</span> <span class="kw">if</span> <span class="ident">line</span>.<span class="ident">starts_with</span>(<span class="string">&#39;;&#39;</span>) <span class="op">||</span> <span class="ident">line</span>.<span class="ident">starts_with</span>(<span class="string">&#39;#&#39;</span>) {
             <span class="prelude-val">Ok</span>(<span class="prelude-val">Some</span>(<span class="ident">Item</span>::<span class="ident">Comment</span> {
                 <span class="ident">text</span>: <span class="ident">line</span>.<span class="ident">into</span>(),
             }))
