@@ -135,8 +135,8 @@ impl<T> Parser<T> {
             if let Some(key) = line.next() {
                 if let Some(value) = line.next() {
                     Ok(Some(Item::Value {
-                        key: key.into(),
-                        value: value.into(),
+                        key: key.trim().into(),
+                        value: value.trim().into(),
                     }))
                 } else if key.is_empty() {
                     Ok(Some(Item::Empty))
