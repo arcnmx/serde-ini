@@ -17,6 +17,6 @@ See the [documentation][docs] for up to date API documentation.
 [release-badge]: https://img.shields.io/crates/v/serde_ini.svg?style=flat-square
 [cargo]: https://crates.io/crates/serde_ini
 [docs-badge]: https://img.shields.io/badge/API-docs-blue.svg?style=flat-square
-[docs]: http://arcnmx.github.io/serde-ini/serde_ini/
+[docs]: https://docs.rs/serde_ini/
 [license-badge]: https://img.shields.io/badge/license-MIT-ff69b4.svg?style=flat-square
 [license]: https://github.com/arcnmx/serde-ini/blob/master/COPYING

@@ -8,7 +8,9 @@ pub enum Error {
 
 impl Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:?}", self)
+        match self {
+            Error::Custom(msg) => write!(f, "{}", msg),
+        }
     }
 }
 

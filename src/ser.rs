@@ -16,11 +16,28 @@ pub enum UnsupportedType {
 
 #[derive(Debug, Clone)]
 pub enum Error {
+    /// Serialization error
+    ///
+    /// Passed through error message from the type being serialized.
     Custom(String),
+
+    /// Attempted to serialize a type not supported by the INI format
+    ///
+    /// INI values can only be strings, or numeric values supported by `FromStr`.
     UnsupportedType(UnsupportedType),
+
+    /// INI section and key names must be a string
     NonStringKey,
+
+    /// An entire INI file can only be serialized from a map or struct type
     TopLevelMap,
+
+    /// Top-level values without a section cannot be serialized after a section has been written
     OrphanValue,
+
+    /// Serializer consistency error
+    ///
+    /// This error indicates that the `SerializeMap` API was misused.
     MapKeyMissing,
 }
 
@@ -38,7 +55,14 @@ impl From<UnsupportedType> for Error {
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:?}", self)
+        match self {
+            Error::Custom(msg) => write!(f, "{}", msg),
+            Error::UnsupportedType(ty) => write!(f, "{:?} cannot be serialized into INI", ty),
+            Error::NonStringKey => write!(f, "INI map keys must be a string type"),
+            Error::OrphanValue => write!(f, "top-level INI values must be serialized before any map sections"),
+            Error::MapKeyMissing => write!(f, "serializer consistency error: attempted to serialize map value without key"),
+            Error::TopLevelMap => write!(f, "INI can only represent a map or struct type"),
+        }
     }
 }
 

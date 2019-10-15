@@ -17,8 +17,19 @@ impl<E, T: Iterator<Item=result::Result<Item, E>>> Trait for T where Error: From
 
 #[derive(Debug, Clone)]
 pub enum Error {
+    /// Deserialization error
+    ///
+    /// Passed through error message from the type being deserialized.
     Custom(String),
+
+    /// Internal consistency error
+    ///
+    /// Encountering this is probably misuse of the deserialization API or a bug in serde-ini.
     UnexpectedEof,
+
+    /// Internal consistency error
+    ///
+    /// Encountering this is probably misuse of the deserialization API or a bug in serde-ini.
     InvalidState,
 }
 
@@ -42,7 +53,11 @@ impl<E: error::Error> From<parse::Error<E>> for Error {
 
 impl Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:?}", self)
+        match self {
+            Error::Custom(msg) => write!(f, "{}", msg),
+            Error::UnexpectedEof => write!(f, "internal consistency error: unexpected EOF"),
+            Error::InvalidState => write!(f, "internal consistency error"),
+        }
     }
 }
 
