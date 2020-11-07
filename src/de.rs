@@ -1,15 +1,21 @@
-use std::fmt::{self, Display};
-use std::str::FromStr;
-use std::mem::replace;
-use std::{error, io, num, result, str};
-use serde::de::{self, Deserialize, DeserializeOwned, DeserializeSeed, Visitor, MapAccess, IntoDeserializer};
 use parse::{self, Item};
+use serde::de::{
+    self, Deserialize, DeserializeOwned, DeserializeSeed, EnumAccess, Error as _, IntoDeserializer,
+    MapAccess, SeqAccess, VariantAccess, Visitor,
+};
+use std::fmt::{self, Display};
+use std::mem::replace;
+use std::str::FromStr;
+use std::{error, io, num, result, str};
 
 pub trait Trait {
     fn next(&mut self) -> Option<result::Result<Item, Error>>;
 }
 
-impl<E, T: Iterator<Item=result::Result<Item, E>>> Trait for T where Error: From<E> {
+impl<E, T: Iterator<Item = result::Result<Item, E>>> Trait for T
+where
+    Error: From<E>,
+{
     fn next(&mut self) -> Option<result::Result<Item, Error>> {
         Iterator::next(self).map(|v| v.map_err(Into::into))
     }
@@ -137,7 +143,7 @@ impl<T: Trait> Deserializer<T> {
                 } else {
                     unreachable!()
                 }
-            },
+            }
             &mut Next::Eof => Ok(None),
             &mut Next::Init => unreachable!(),
         }
@@ -153,10 +159,19 @@ impl<T: Trait> Deserializer<T> {
         })
     }
 
-    fn next_key(&mut self) -> Result<String> {
+    fn peek_section(&mut self) -> Result<&str> {
         self.populate();
         match self.peek_item()? {
-            Some(&mut Item::Value { ref mut key, .. }) => Ok(replace(key, String::new())),
+            Some(&mut Item::Section { ref name }) => Ok(name),
+            Some(..) => Err(Error::InvalidState),
+            None => Err(Error::UnexpectedEof),
+        }
+    }
+
+    fn peek_key(&mut self) -> Result<&str> {
+        self.populate();
+        match self.peek_item()? {
+            Some(&mut Item::Value { ref key, .. }) => Ok(key),
             Some(..) => Err(Error::InvalidState),
             None => Err(Error::UnexpectedEof),
         }
@@ -171,15 +186,6 @@ impl<T: Trait> Deserializer<T> {
     }
 
     fn next_section(&mut self) -> Result<String> {
-        self.populate();
-        match self.peek_item()? {
-            Some(&mut Item::Section { ref mut name }) => Ok(replace(name, String::new())),
-            Some(..) => Err(Error::InvalidState),
-            None => Err(Error::UnexpectedEof),
-        }
-    }
-
-    fn next_section_commit(&mut self) -> Result<String> {
         self.populate();
         match self.next_item()? {
             Item::Section { name } => Ok(name),
@@ -203,13 +209,17 @@ impl<'de, 'a, T: Trait> de::Deserializer<'de> for &'a mut Deserializer<T> {
         visitor.visit_map(MapAccessTop(self))
     }
 
+    fn deserialize_seq<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value> {
+        visitor.visit_seq(SeqAccessTop(self))
+    }
+
     fn deserialize_option<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value> {
         visitor.visit_some(self)
     }
 
     forward_to_deserialize_any! {
         bool i8 i16 i32 i64 u8 u16 u32 u64 f32 f64 char str string bytes
-        byte_buf unit unit_struct newtype_struct seq tuple tuple_struct
+        byte_buf unit unit_struct newtype_struct tuple tuple_struct
         map struct identifier ignored_any enum
     }
 }
@@ -241,7 +251,114 @@ impl<'de, 'a, T: Trait> de::Deserializer<'de> for &'a mut SectionDeserializer<'a
     type Error = Error;
 
     fn deserialize_any<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value> {
-        visitor.visit_map(MapAccessSection(self.0))
+        struct MapAccessSectionBody<'a, T: Trait + 'a>(&'a mut Deserializer<T>);
+
+        impl<'de, 'a, T: Trait + 'a> MapAccess<'de> for MapAccessSectionBody<'a, T> {
+            type Error = Error;
+
+            fn next_key_seed<K: DeserializeSeed<'de>>(
+                &mut self,
+                seed: K,
+            ) -> Result<Option<K::Value>> {
+                match (self.0).peek_kind()? {
+                    Some(PeekKind::Value) => seed
+                        .deserialize((self.0).peek_key()?.into_deserializer())
+                        .map(Some),
+                    None | Some(PeekKind::Section) => Ok(None),
+                }
+            }
+
+            fn next_value_seed<V: DeserializeSeed<'de>>(&mut self, seed: V) -> Result<V::Value> {
+                seed.deserialize(&mut ValueDeserializer(self.0))
+            }
+        }
+
+        (self.0).next_section()?;
+        visitor.visit_map(MapAccessSectionBody(self.0))
+    }
+
+    fn deserialize_enum<V: Visitor<'de>>(
+        self,
+        _name: &'static str,
+        _variants: &'static [&'static str],
+        visitor: V,
+    ) -> Result<V::Value> {
+        struct EnumAccessSection<'a, T: Trait + 'a>(&'a mut Deserializer<T>);
+
+        impl<'de, 'a, T: Trait + 'a> EnumAccess<'de> for EnumAccessSection<'a, T> {
+            type Error = Error;
+            type Variant = VariantAccessSection<'a, T>;
+
+            fn variant_seed<V>(self, seed: V) -> Result<(V::Value, Self::Variant)>
+            where
+                V: DeserializeSeed<'de>,
+            {
+                struct SectionNameDeserializer<'a, T: 'a>(&'a mut Deserializer<T>);
+
+                impl<'de, 'a, T: Trait> de::Deserializer<'de> for &'a mut SectionNameDeserializer<'a, T> {
+                    type Error = Error;
+
+                    fn deserialize_any<V: Visitor<'de>>(self, _visitor: V) -> Result<V::Value> {
+                        Err(Error::InvalidState)
+                    }
+
+                    fn deserialize_identifier<V>(self, visitor: V) -> Result<V::Value>
+                    where
+                        V: Visitor<'de>,
+                    {
+                        let name = self.0.peek_section()?;
+                        visitor.visit_str(name)
+                    }
+
+                    forward_to_deserialize_any! {
+                        bool i8 i16 i32 i64 u8 u16 u32 u64 f32 f64 char bytes
+                        byte_buf str string unit unit_struct newtype_struct seq tuple tuple_struct
+                        map struct ignored_any enum option
+                    }
+                }
+
+                let variant = seed.deserialize(&mut SectionNameDeserializer(self.0))?;
+                Ok((variant, VariantAccessSection(self.0)))
+            }
+        }
+
+        struct VariantAccessSection<'a, T: Trait + 'a>(&'a mut Deserializer<T>);
+
+        impl<'de, 'a, T: Trait + 'a> VariantAccess<'de> for VariantAccessSection<'a, T> {
+            type Error = Error;
+
+            fn unit_variant(self) -> Result<()> {
+                Err(Error::custom("unit variant is not supported"))
+            }
+
+            fn newtype_variant_seed<E>(self, seed: E) -> Result<E::Value>
+            where
+                E: DeserializeSeed<'de>,
+            {
+                seed.deserialize(&mut SectionDeserializer(self.0))
+            }
+
+            fn tuple_variant<V>(self, _len: usize, _visitor: V) -> Result<V::Value>
+            where
+                V: Visitor<'de>,
+            {
+                Err(Error::custom("tuple variant is not supported"))
+            }
+
+            fn struct_variant<V>(
+                self,
+                _fields: &'static [&'static str],
+                visitor: V,
+            ) -> Result<V::Value>
+            where
+                V: Visitor<'de>,
+            {
+                use serde::Deserializer;
+                SectionDeserializer(self.0).deserialize_any(visitor)
+            }
+        }
+
+        visitor.visit_enum(EnumAccessSection(self.0))
     }
 
     fn deserialize_option<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value> {
@@ -251,7 +368,7 @@ impl<'de, 'a, T: Trait> de::Deserializer<'de> for &'a mut SectionDeserializer<'a
     forward_to_deserialize_any! {
         bool i8 i16 i32 i64 u8 u16 u32 u64 f32 f64 char str string bytes
         byte_buf unit unit_struct newtype_struct seq tuple tuple_struct
-        map struct identifier ignored_any enum
+        map struct identifier ignored_any
     }
 }
 
@@ -352,11 +469,19 @@ impl<'de, 'a, T: Trait> de::Deserializer<'de> for &'a mut ValueDeserializer<'a, 
     }
 
     // Unit struct means a named value containing no data.
-    fn deserialize_unit_struct<V: Visitor<'de>>(self, _name: &'static str, visitor: V) -> Result<V::Value> {
+    fn deserialize_unit_struct<V: Visitor<'de>>(
+        self,
+        _name: &'static str,
+        visitor: V,
+    ) -> Result<V::Value> {
         self.deserialize_unit(visitor)
     }
 
-    fn deserialize_newtype_struct<V: Visitor<'de>>(self, _name: &'static str, visitor: V) -> Result<V::Value> {
+    fn deserialize_newtype_struct<V: Visitor<'de>>(
+        self,
+        _name: &'static str,
+        visitor: V,
+    ) -> Result<V::Value> {
         visitor.visit_newtype_struct(self)
     }
 
@@ -368,7 +493,12 @@ impl<'de, 'a, T: Trait> de::Deserializer<'de> for &'a mut ValueDeserializer<'a, 
         self.deserialize_any(visitor)
     }
 
-    fn deserialize_tuple_struct<V: Visitor<'de>>(self, _name: &'static str, _len: usize, visitor: V) -> Result<V::Value> {
+    fn deserialize_tuple_struct<V: Visitor<'de>>(
+        self,
+        _name: &'static str,
+        _len: usize,
+        visitor: V,
+    ) -> Result<V::Value> {
         self.deserialize_any(visitor)
     }
 
@@ -376,11 +506,21 @@ impl<'de, 'a, T: Trait> de::Deserializer<'de> for &'a mut ValueDeserializer<'a, 
         self.deserialize_any(visitor)
     }
 
-    fn deserialize_struct<V: Visitor<'de>>(self, _name: &'static str, _fields: &'static [&'static str], visitor: V) -> Result<V::Value> {
+    fn deserialize_struct<V: Visitor<'de>>(
+        self,
+        _name: &'static str,
+        _fields: &'static [&'static str],
+        visitor: V,
+    ) -> Result<V::Value> {
         self.deserialize_map(visitor)
     }
 
-    fn deserialize_enum<V: Visitor<'de>>(self, _name: &'static str, _variants: &'static [&'static str], visitor: V) -> Result<V::Value> {
+    fn deserialize_enum<V: Visitor<'de>>(
+        self,
+        _name: &'static str,
+        _variants: &'static [&'static str],
+        visitor: V,
+    ) -> Result<V::Value> {
         match (self.0).peek_kind()? {
             Some(PeekKind::Value) => visitor.visit_enum((self.0).next_value()?.into_deserializer()),
             None | Some(PeekKind::Section) => Err(Error::InvalidState),
@@ -396,6 +536,126 @@ impl<'de, 'a, T: Trait> de::Deserializer<'de> for &'a mut ValueDeserializer<'a, 
     }
 }
 
+struct SeqAccessTop<'a, T: Trait + 'a>(&'a mut Deserializer<T>);
+
+impl<'de, 'a, T: Trait + 'a> SeqAccess<'de> for SeqAccessTop<'a, T> {
+    type Error = Error;
+
+    fn next_element_seed<E>(&mut self, seed: E) -> Result<Option<E::Value>>
+    where
+        E: DeserializeSeed<'de>,
+    {
+        pub struct KeyValueDeserializer<'a, T: 'a>(&'a mut Deserializer<T>);
+
+        impl<'de, 'a, T: Trait> de::Deserializer<'de> for &'a mut KeyValueDeserializer<'a, T> {
+            type Error = Error;
+
+            fn deserialize_any<V: Visitor<'de>>(self, _visitor: V) -> Result<V::Value> {
+                Err(Error::custom("expect an enum type"))
+            }
+
+            fn deserialize_enum<V: Visitor<'de>>(
+                self,
+                _name: &'static str,
+                _variants: &'static [&'static str],
+                visitor: V,
+            ) -> Result<V::Value> {
+                struct EnumAccessKeyValue<'a, T: Trait + 'a>(&'a mut Deserializer<T>);
+
+                impl<'de, 'a, T: Trait + 'a> EnumAccess<'de> for EnumAccessKeyValue<'a, T> {
+                    type Error = Error;
+                    type Variant = VariantAccessKeyValue<'a, T>;
+
+                    fn variant_seed<V>(self, seed: V) -> Result<(V::Value, Self::Variant)>
+                    where
+                        V: DeserializeSeed<'de>,
+                    {
+                        struct KeyDeserializer<'a, T: 'a>(&'a mut Deserializer<T>);
+
+                        impl<'de, 'a, T: Trait> de::Deserializer<'de> for &'a mut KeyDeserializer<'a, T> {
+                            type Error = Error;
+
+                            fn deserialize_any<V: Visitor<'de>>(
+                                self,
+                                _visitor: V,
+                            ) -> Result<V::Value> {
+                                Err(Error::InvalidState)
+                            }
+
+                            fn deserialize_identifier<V>(self, visitor: V) -> Result<V::Value>
+                            where
+                                V: Visitor<'de>,
+                            {
+                                let name = self.0.peek_key()?;
+                                visitor.visit_str(name)
+                            }
+
+                            forward_to_deserialize_any! {
+                                bool i8 i16 i32 i64 u8 u16 u32 u64 f32 f64 char bytes
+                                byte_buf str string unit unit_struct newtype_struct seq tuple tuple_struct
+                                map struct ignored_any enum option
+                            }
+                        }
+
+                        let variant = seed.deserialize(&mut KeyDeserializer(self.0))?;
+                        Ok((variant, VariantAccessKeyValue(self.0)))
+                    }
+                }
+
+                struct VariantAccessKeyValue<'a, T: Trait + 'a>(&'a mut Deserializer<T>);
+
+                impl<'de, 'a, T: Trait + 'a> VariantAccess<'de> for VariantAccessKeyValue<'a, T> {
+                    type Error = Error;
+
+                    fn unit_variant(self) -> Result<()> {
+                        Err(Error::custom("unit variant is not supported"))
+                    }
+
+                    fn newtype_variant_seed<E>(self, seed: E) -> Result<E::Value>
+                    where
+                        E: DeserializeSeed<'de>,
+                    {
+                        seed.deserialize(&mut ValueDeserializer(self.0))
+                    }
+
+                    fn tuple_variant<V>(self, _len: usize, _visitor: V) -> Result<V::Value>
+                    where
+                        V: Visitor<'de>,
+                    {
+                        Err(Error::custom("tuple variant is not supported"))
+                    }
+
+                    fn struct_variant<V>(
+                        self,
+                        _fields: &'static [&'static str],
+                        _visitor: V,
+                    ) -> Result<V::Value>
+                    where
+                        V: Visitor<'de>,
+                    {
+                        Err(Error::custom("struct variant is not supported"))
+                    }
+                }
+
+                visitor.visit_enum(EnumAccessKeyValue(self.0))
+            }
+
+            forward_to_deserialize_any! {
+                bool i8 i16 i32 i64 u8 u16 u32 u64 f32 f64 char str string bytes
+                byte_buf unit unit_struct newtype_struct seq tuple tuple_struct
+                map struct identifier ignored_any option
+            }
+        }
+
+        match (self.0).peek_kind()? {
+            Some(PeekKind::Value) => seed.deserialize(&mut KeyValueDeserializer(self.0)),
+            Some(PeekKind::Section) => seed.deserialize(&mut SectionDeserializer(self.0)),
+            None => return Ok(None),
+        }
+        .map(Some)
+    }
+}
+
 struct MapAccessTop<'a, T: Trait + 'a>(&'a mut Deserializer<T>);
 
 impl<'de, 'a, T: Trait + 'a> MapAccess<'de> for MapAccessTop<'a, T> {
@@ -403,104 +663,23 @@ impl<'de, 'a, T: Trait + 'a> MapAccess<'de> for MapAccessTop<'a, T> {
 
     fn next_key_seed<K: DeserializeSeed<'de>>(&mut self, seed: K) -> Result<Option<K::Value>> {
         match (self.0).peek_kind()? {
-            Some(PeekKind::Value) => seed.deserialize((self.0).next_key()?.into_deserializer()),
-            Some(PeekKind::Section) => seed.deserialize((self.0).next_section()?.into_deserializer()),
+            Some(PeekKind::Value) => seed.deserialize((self.0).peek_key()?.into_deserializer()),
+            Some(PeekKind::Section) => {
+                seed.deserialize((self.0).peek_section()?.into_deserializer())
+            }
             None => return Ok(None),
-        }.map(Some)
+        }
+        .map(Some)
     }
 
     fn next_value_seed<V: DeserializeSeed<'de>>(&mut self, seed: V) -> Result<V::Value> {
         match (self.0).peek_kind()? {
             Some(PeekKind::Value) => seed.deserialize(&mut ValueDeserializer(self.0)),
-            Some(PeekKind::Section) => {
-                (self.0).next_section_commit()?;
-                seed.deserialize(&mut SectionDeserializer(self.0))
-            },
+            Some(PeekKind::Section) => seed.deserialize(&mut SectionDeserializer(self.0)),
             None => Err(Error::UnexpectedEof),
         }
     }
 }
-
-struct MapAccessSection<'a, T: Trait + 'a>(&'a mut Deserializer<T>);
-
-impl<'de, 'a, T: Trait + 'a> MapAccess<'de> for MapAccessSection<'a, T> {
-    type Error = Error;
-
-    fn next_key_seed<K: DeserializeSeed<'de>>(&mut self, seed: K) -> Result<Option<K::Value>> {
-        match (self.0).peek_kind()? {
-            Some(PeekKind::Value) => seed.deserialize((self.0).next_key()?.into_deserializer()).map(Some),
-            None | Some(PeekKind::Section) => Ok(None),
-        }
-    }
-
-    fn next_value_seed<V: DeserializeSeed<'de>>(&mut self, seed: V) -> Result<V::Value> {
-        seed.deserialize(&mut ValueDeserializer(self.0))
-    }
-}
-
-/*
-struct Enum<'a, 'de: 'a> {
-    de: &'a mut Deserializer<'de>,
-}
-
-impl<'a, 'de> Enum<'a, 'de> {
-    fn new(de: &'a mut Deserializer<'de>) -> Self {
-        Enum { de: de }
-    }
-}
-
-// `EnumAccess` is provided to the `Visitor` to give it the ability to determine
-// which variant of the enum is supposed to be deserialized.
-//
-// Note that all enum deserialization methods in Serde refer exclusively to the
-// "externally tagged" enum representation.
-impl<'de, 'a> EnumAccess<'de> for Enum<'a, 'de> {
-    type Error = Error;
-    type Variant = Self;
-
-    fn variant_seed<V: DeserializeSeed<'de>>(self, seed: V) -> Result<(V::Value, Self::Variant)> {
-        // The `deserialize_enum` method parsed a `{` character so we are
-        // currently inside of a map. The seed will be deserializing itself from
-        // the key of the map.
-        let val = seed.deserialize(&mut *self.de)?;
-        // Parse the colon separating map key from value.
-        if (self.0).next_char()? == ':' {
-            Ok((val, self))
-        } else {
-            Err(Error::ExpectedMapColon)
-        }
-    }
-}
-
-// `VariantAccess` is provided to the `Visitor` to give it the ability to see
-// the content of the single variant that it decided to deserialize.
-impl<'de, 'a> VariantAccess<'de> for Enum<'a, 'de> {
-    type Error = Error;
-
-    // If the `Visitor` expected this variant to be a unit variant, the input
-    // should have been the plain string case handled in `deserialize_enum`.
-    fn unit_variant(self) -> Result<()> {
-        Err(Error::ExpectedString)
-    }
-
-    // Newtype variants are represented in JSON as `{ NAME: VALUE }` so
-    // deserialize the value here.
-    fn newtype_variant_seed<T: DeserializeSeed<'de>>(self, seed: T) -> Result<T::Value> {
-        seed.deserialize(self.de)
-    }
-
-    // Tuple variants are represented in JSON as `{ NAME: [DATA...] }` so
-    // deserialize the sequence of data here.
-    fn tuple_variant<V: Visitor<'de>>(self, _len: usize, visitor: V) -> Result<V::Value> {
-        de::Deserializer::deserialize_seq(self.de, visitor)
-    }
-
-    // Struct variants are represented in JSON as `{ NAME: { K: V, ... } }` so
-    // deserialize the inner map here.
-    fn struct_variant<V: Visitor<'de>>(self, _fields: &'static [&'static str], visitor: V) -> Result<V::Value> {
-        de::Deserializer::deserialize_map(self.de, visitor)
-    }
-}*/
 
 /// Deserialize an instance of type `T` from a string of INI text.
 pub fn from_str<T: DeserializeOwned>(s: &str) -> Result<T> {
