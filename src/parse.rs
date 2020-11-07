@@ -1,20 +1,13 @@
-use std::{io, fmt, error, str};
 use result::prelude::*;
+use std::{error, fmt, io, str};
 use void::Void;
 
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Debug)]
 pub enum Item {
     Empty,
-    Section {
-        name: String
-    },
-    Value {
-        key: String,
-        value: String,
-    },
-    Comment {
-        text: String
-    },
+    Section { name: String },
+    Value { key: String, value: String },
+    Comment { text: String },
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Debug)]
@@ -77,9 +70,7 @@ pub struct Parser<T> {
 
 impl<T> Parser<T> {
     pub fn new(input: T) -> Self {
-        Parser {
-            input: input,
-        }
+        Parser { input: input }
     }
 
     pub fn into_inner(self) -> T {
@@ -119,17 +110,13 @@ impl<T> Parser<T> {
                 if line.contains(']') {
                     Err(Error::Syntax(SyntaxError::SectionName))
                 } else {
-                    Ok(Some(Item::Section {
-                        name: line.into(),
-                    }))
+                    Ok(Some(Item::Section { name: line.into() }))
                 }
             } else {
                 Err(Error::Syntax(SyntaxError::SectionNotClosed))
             }
         } else if line.starts_with(';') || line.starts_with('#') {
-            Ok(Some(Item::Comment {
-                text: line.into(),
-            }))
+            Ok(Some(Item::Comment { text: line.into() }))
         } else {
             let mut line = line.splitn(2, '=');
             if let Some(key) = line.next() {
@@ -150,17 +137,21 @@ impl<T> Parser<T> {
     }
 }
 
-impl<E, S: AsRef<str>, T: Iterator<Item=Result<S, E>>> Iterator for Parser<T> {
+impl<E, S: AsRef<str>, T: Iterator<Item = Result<S, E>>> Iterator for Parser<T> {
     type Item = Result<Item, Error<E>>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.input.next_invert().map_err(Error::Inner).and_then(|l| Self::parse_next(l)).invert()
+        self.input
+            .next_invert()
+            .map_err(Error::Inner)
+            .and_then(|l| Self::parse_next(l))
+            .invert()
     }
 }
 
 pub struct OkIter<I>(pub I);
 
-impl<T, I: Iterator<Item=T>> Iterator for OkIter<I> {
+impl<T, I: Iterator<Item = T>> Iterator for OkIter<I> {
     type Item = Result<T, Void>;
 
     fn next(&mut self) -> Option<Self::Item> {

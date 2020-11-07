@@ -3,7 +3,7 @@ use std::fmt::{self, Display};
 
 #[derive(Debug, Clone)]
 pub enum Error {
-    Custom(String)
+    Custom(String),
 }
 
 impl Display for Error {

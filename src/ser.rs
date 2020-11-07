@@ -1,8 +1,8 @@
-use std::io::{self, Write};
-use std::{result, fmt};
-use serde::ser::{self, Serialize, Impossible};
-use write::Writer;
 use parse::Item;
+use serde::ser::{self, Impossible, Serialize};
+use std::io::{self, Write};
+use std::{fmt, result};
+use write::Writer;
 
 #[derive(Copy, Clone, Debug)]
 pub enum UnsupportedType {
@@ -59,8 +59,14 @@ impl fmt::Display for Error {
             Error::Custom(msg) => write!(f, "{}", msg),
             Error::UnsupportedType(ty) => write!(f, "{:?} cannot be serialized into INI", ty),
             Error::NonStringKey => write!(f, "INI map keys must be a string type"),
-            Error::OrphanValue => write!(f, "top-level INI values must be serialized before any map sections"),
-            Error::MapKeyMissing => write!(f, "serializer consistency error: attempted to serialize map value without key"),
+            Error::OrphanValue => write!(
+                f,
+                "top-level INI values must be serialized before any map sections"
+            ),
+            Error::MapKeyMissing => write!(
+                f,
+                "serializer consistency error: attempted to serialize map value without key"
+            ),
             Error::TopLevelMap => write!(f, "INI can only represent a map or struct type"),
         }
     }
@@ -86,9 +92,7 @@ pub struct Serializer<W> {
 
 impl<W> Serializer<W> {
     pub fn new(writer: Writer<W>) -> Self {
-        Serializer {
-            writer: writer,
-        }
+        Serializer { writer: writer }
     }
 }
 
@@ -109,19 +113,23 @@ pub struct MapSerializer<'a, W: 'a> {
 impl<'a, 'k, W: Write> ValueSerializer<'a, 'k, W> {
     fn serialize_string(&mut self, s: String) -> Result<()> {
         if !self.top_level || *self.allow_values {
-            self.writer.write(&Item::Value {
-                key: self.key.into(),
-                value: s,
-            }).map_err(Into::into)
+            self.writer
+                .write(&Item::Value {
+                    key: self.key.into(),
+                    value: s,
+                })
+                .map_err(Into::into)
         } else {
             Err(Error::OrphanValue)
         }
     }
 
     fn serialize_section(&mut self) -> Result<()> {
-        self.writer.write(&Item::Section {
-            name: self.key.into(),
-        }).map_err(Into::into)
+        self.writer
+            .write(&Item::Section {
+                name: self.key.into(),
+            })
+            .map_err(Into::into)
     }
 }
 
@@ -209,15 +217,30 @@ impl<'a, 'k, W: Write + 'a> ser::Serializer for ValueSerializer<'a, 'k, W> {
         Err(UnsupportedType::Unit.into())
     }
 
-    fn serialize_unit_variant(self, _name: &'static str, _variant_index: u32, variant: &'static str) -> Result<()> {
+    fn serialize_unit_variant(
+        self,
+        _name: &'static str,
+        _variant_index: u32,
+        variant: &'static str,
+    ) -> Result<()> {
         self.serialize_str(variant)
     }
 
-    fn serialize_newtype_struct<T: ?Sized + Serialize>(self, _name: &'static str, value: &T) -> Result<()> {
+    fn serialize_newtype_struct<T: ?Sized + Serialize>(
+        self,
+        _name: &'static str,
+        value: &T,
+    ) -> Result<()> {
         value.serialize(self)
     }
 
-    fn serialize_newtype_variant<T: ?Sized + Serialize>(self, _name: &'static str, _variant_index: u32, _variant: &'static str, _value: &T) -> Result<()> {
+    fn serialize_newtype_variant<T: ?Sized + Serialize>(
+        self,
+        _name: &'static str,
+        _variant_index: u32,
+        _variant: &'static str,
+        _value: &T,
+    ) -> Result<()> {
         Err(UnsupportedType::Unit.into())
     }
 
@@ -229,11 +252,21 @@ impl<'a, 'k, W: Write + 'a> ser::Serializer for ValueSerializer<'a, 'k, W> {
         self.serialize_seq(Some(len))
     }
 
-    fn serialize_tuple_struct(self, _name: &'static str, len: usize) -> Result<Self::SerializeTupleStruct> {
+    fn serialize_tuple_struct(
+        self,
+        _name: &'static str,
+        len: usize,
+    ) -> Result<Self::SerializeTupleStruct> {
         self.serialize_seq(Some(len))
     }
 
-    fn serialize_tuple_variant(self, _name: &'static str, _variant_index: u32, _variant: &'static str, _len: usize) -> Result<Self::SerializeTupleVariant> {
+    fn serialize_tuple_variant(
+        self,
+        _name: &'static str,
+        _variant_index: u32,
+        _variant: &'static str,
+        _len: usize,
+    ) -> Result<Self::SerializeTupleVariant> {
         Err(UnsupportedType::Seq.into())
     }
 
@@ -255,7 +288,13 @@ impl<'a, 'k, W: Write + 'a> ser::Serializer for ValueSerializer<'a, 'k, W> {
         self.serialize_map(Some(len))
     }
 
-    fn serialize_struct_variant(self, _name: &'static str, _variant_index: u32, _variant: &'static str, _len: usize) -> Result<Self::SerializeStructVariant> {
+    fn serialize_struct_variant(
+        self,
+        _name: &'static str,
+        _variant_index: u32,
+        _variant: &'static str,
+        _len: usize,
+    ) -> Result<Self::SerializeStructVariant> {
         Err(UnsupportedType::Map.into())
     }
 }
@@ -349,15 +388,30 @@ impl<'a> ser::Serializer for &'a mut KeySerializer {
         Err(Error::NonStringKey)
     }
 
-    fn serialize_unit_variant(self, _name: &'static str, _variant_index: u32, variant: &'static str) -> Result<()> {
+    fn serialize_unit_variant(
+        self,
+        _name: &'static str,
+        _variant_index: u32,
+        variant: &'static str,
+    ) -> Result<()> {
         self.serialize_str(variant)
     }
 
-    fn serialize_newtype_struct<T: ?Sized + Serialize>(self, _name: &'static str, value: &T) -> Result<()> {
+    fn serialize_newtype_struct<T: ?Sized + Serialize>(
+        self,
+        _name: &'static str,
+        value: &T,
+    ) -> Result<()> {
         value.serialize(self)
     }
 
-    fn serialize_newtype_variant<T: ?Sized + Serialize>(self, _name: &'static str, _variant_index: u32, _variant: &'static str, _value: &T) -> Result<()> {
+    fn serialize_newtype_variant<T: ?Sized + Serialize>(
+        self,
+        _name: &'static str,
+        _variant_index: u32,
+        _variant: &'static str,
+        _value: &T,
+    ) -> Result<()> {
         Err(Error::NonStringKey)
     }
 
@@ -369,11 +423,21 @@ impl<'a> ser::Serializer for &'a mut KeySerializer {
         self.serialize_seq(Some(len))
     }
 
-    fn serialize_tuple_struct(self, _name: &'static str, len: usize) -> Result<Self::SerializeTupleStruct> {
+    fn serialize_tuple_struct(
+        self,
+        _name: &'static str,
+        len: usize,
+    ) -> Result<Self::SerializeTupleStruct> {
         self.serialize_seq(Some(len))
     }
 
-    fn serialize_tuple_variant(self, _name: &'static str, _variant_index: u32, _variant: &'static str, _len: usize) -> Result<Self::SerializeTupleVariant> {
+    fn serialize_tuple_variant(
+        self,
+        _name: &'static str,
+        _variant_index: u32,
+        _variant: &'static str,
+        _len: usize,
+    ) -> Result<Self::SerializeTupleVariant> {
         Err(Error::NonStringKey)
     }
 
@@ -385,7 +449,13 @@ impl<'a> ser::Serializer for &'a mut KeySerializer {
         self.serialize_map(Some(len))
     }
 
-    fn serialize_struct_variant(self, _name: &'static str, _variant_index: u32, _variant: &'static str, _len: usize) -> Result<Self::SerializeStructVariant> {
+    fn serialize_struct_variant(
+        self,
+        _name: &'static str,
+        _variant_index: u32,
+        _variant: &'static str,
+        _len: usize,
+    ) -> Result<Self::SerializeStructVariant> {
         Err(Error::NonStringKey)
     }
 }
@@ -474,15 +544,30 @@ impl<'a, W: Write> ser::Serializer for &'a mut Serializer<W> {
         Err(Error::TopLevelMap)
     }
 
-    fn serialize_unit_variant(self, _name: &'static str, _variant_index: u32, variant: &'static str) -> Result<()> {
+    fn serialize_unit_variant(
+        self,
+        _name: &'static str,
+        _variant_index: u32,
+        variant: &'static str,
+    ) -> Result<()> {
         self.serialize_str(variant)
     }
 
-    fn serialize_newtype_struct<T: ?Sized + Serialize>(self, _name: &'static str, value: &T) -> Result<()> {
+    fn serialize_newtype_struct<T: ?Sized + Serialize>(
+        self,
+        _name: &'static str,
+        value: &T,
+    ) -> Result<()> {
         value.serialize(self)
     }
 
-    fn serialize_newtype_variant<T: ?Sized + Serialize>(self, _name: &'static str, _variant_index: u32, _variant: &'static str, _value: &T) -> Result<()> {
+    fn serialize_newtype_variant<T: ?Sized + Serialize>(
+        self,
+        _name: &'static str,
+        _variant_index: u32,
+        _variant: &'static str,
+        _value: &T,
+    ) -> Result<()> {
         Err(Error::TopLevelMap)
     }
 
@@ -494,11 +579,21 @@ impl<'a, W: Write> ser::Serializer for &'a mut Serializer<W> {
         self.serialize_seq(Some(len))
     }
 
-    fn serialize_tuple_struct(self, _name: &'static str, len: usize) -> Result<Self::SerializeTupleStruct> {
+    fn serialize_tuple_struct(
+        self,
+        _name: &'static str,
+        len: usize,
+    ) -> Result<Self::SerializeTupleStruct> {
         self.serialize_seq(Some(len))
     }
 
-    fn serialize_tuple_variant(self, _name: &'static str, _variant_index: u32, _variant: &'static str, _len: usize) -> Result<Self::SerializeTupleVariant> {
+    fn serialize_tuple_variant(
+        self,
+        _name: &'static str,
+        _variant_index: u32,
+        _variant: &'static str,
+        _len: usize,
+    ) -> Result<Self::SerializeTupleVariant> {
         Err(Error::TopLevelMap)
     }
 
@@ -515,7 +610,13 @@ impl<'a, W: Write> ser::Serializer for &'a mut Serializer<W> {
         self.serialize_map(Some(len))
     }
 
-    fn serialize_struct_variant(self, _name: &'static str, _variant_index: u32, _variant: &'static str, _len: usize) -> Result<Self::SerializeStructVariant> {
+    fn serialize_struct_variant(
+        self,
+        _name: &'static str,
+        _variant_index: u32,
+        _variant: &'static str,
+        _len: usize,
+    ) -> Result<Self::SerializeStructVariant> {
         Err(Error::TopLevelMap)
     }
 }
@@ -535,12 +636,17 @@ impl<'a, W: Write> ser::SerializeMap for MapSerializer<'a, W> {
         let writer = &mut self.writer;
         let allow_values = &mut self.allow_values;
         let top_level = self.top_level;
-        self.key.as_ref().ok_or_else(|| Error::MapKeyMissing).and_then(move |key| value.serialize(ValueSerializer {
-            writer: writer,
-            key: key,
-            top_level: top_level,
-            allow_values: allow_values,
-        }))
+        self.key
+            .as_ref()
+            .ok_or_else(|| Error::MapKeyMissing)
+            .and_then(move |key| {
+                value.serialize(ValueSerializer {
+                    writer: writer,
+                    key: key,
+                    top_level: top_level,
+                    allow_values: allow_values,
+                })
+            })
     }
 
     fn end(self) -> Result<()> {
@@ -552,7 +658,11 @@ impl<'a, W: Write> ser::SerializeStruct for MapSerializer<'a, W> {
     type Ok = ();
     type Error = Error;
 
-    fn serialize_field<T: ?Sized + Serialize>(&mut self, key: &'static str, value: &T) -> Result<()> {
+    fn serialize_field<T: ?Sized + Serialize>(
+        &mut self,
+        key: &'static str,
+        value: &T,
+    ) -> Result<()> {
         value.serialize(ValueSerializer {
             writer: &mut self.writer,
             key: key,
