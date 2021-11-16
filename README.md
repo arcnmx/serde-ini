@@ -1,6 +1,6 @@
 # serde-ini
 
-[![travis-badge][]][travis] [![release-badge][]][cargo] [![docs-badge][]][docs] [![license-badge][]][license]
+[![release-badge][]][cargo] [![docs-badge][]][docs] [![license-badge][]][license]
 
 `serde_ini` provides a serde `Serializer` and `Deserializer` for the [INI format](https://en.wikipedia.org/wiki/INI_file).
 The format is rather limited, only allowing top level keys to be maps or structs
@@ -12,8 +12,6 @@ Sequences, tuples, bytes, bools, and some other data types are not supported.
 
 See the [documentation][docs] for up to date API documentation.
 
-[travis-badge]: https://img.shields.io/travis/arcnmx/serde-ini/master.svg?style=flat-square
-[travis]: https://travis-ci.org/arcnmx/serde-ini
 [release-badge]: https://img.shields.io/crates/v/serde_ini.svg?style=flat-square
 [cargo]: https://crates.io/crates/serde_ini
 [docs-badge]: https://img.shields.io/badge/API-docs-blue.svg?style=flat-square
