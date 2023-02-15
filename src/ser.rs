@@ -39,6 +39,13 @@ pub enum Error {
     ///
     /// This error indicates that the `SerializeMap` API was misused.
     MapKeyMissing,
+
+    /// If the top-level value is a sequence, its children must be able to be serialized as
+    /// sections
+    ExpectedSection,
+
+    /// If not at the top-level, sections are not allowed
+    ExpectedValues,
 }
 
 impl From<io::Error> for Error {
@@ -62,6 +69,8 @@ impl fmt::Display for Error {
             Error::OrphanValue => write!(f, "top-level INI values must be serialized before any map sections"),
             Error::MapKeyMissing => write!(f, "serializer consistency error: attempted to serialize map value without key"),
             Error::TopLevelMap => write!(f, "INI can only represent a map or struct type"),
+            Error::ExpectedSection => write!(f, "top-level sequences must contain sections, e.g. enum struct variants"),
+            Error::ExpectedValues => write!(f, "sections nested within sections are not allowed"),
         }
     }
 }
@@ -80,6 +89,9 @@ impl ser::Error for Error {
 
 pub type Result<T> = result::Result<T, Error>;
 
+/// The top-level serializer for an INI file.
+///
+/// This may accept plain values, a section, or multiple sections in a sequence.
 pub struct Serializer<W> {
     writer: Writer<W>,
 }
@@ -92,6 +104,11 @@ impl<W> Serializer<W> {
     }
 }
 
+/// The serializer for a value within a map.
+///
+/// The key and value are dumped together. If this is at the top level, and the value is map-like,
+/// then the key is dumped as the section name and the value is dumped as the values within the
+/// section.
 struct ValueSerializer<'a, 'k, W: 'a> {
     writer: &'a mut Writer<W>,
     key: &'k str,
@@ -99,11 +116,30 @@ struct ValueSerializer<'a, 'k, W: 'a> {
     allow_values: &'a mut bool,
 }
 
+/// The serializer for a map of values or sections within an INI file.
 pub struct MapSerializer<'a, W: 'a> {
     writer: &'a mut Writer<W>,
     key: Option<String>,
     top_level: bool,
     allow_values: bool,
+}
+
+/// The serializer for a sequence of sections within an INI file.
+pub struct SeqSerializer<'a, W: 'a> {
+    writer: &'a mut Writer<W>,
+}
+
+/// A serializer that accepts only section-like items.
+struct SectionSerializer<'a, W: 'a> {
+    writer: &'a mut Writer<W>,
+}
+
+/// A serializer that accepts only values-like items.
+///
+/// The MapSerializer it generates is always set to not be top level so that no sections can be
+/// generated within it.
+struct ValuesSerializer<'a, W: 'a> {
+    writer: &'a mut Writer<W>,
 }
 
 impl<'a, 'k, W: Write> ValueSerializer<'a, 'k, W> {
@@ -394,13 +430,13 @@ impl<'a, W: Write> ser::Serializer for &'a mut Serializer<W> {
     type Ok = ();
     type Error = Error;
 
-    type SerializeSeq = Impossible<Self::Ok, Self::Error>;
-    type SerializeTuple = Impossible<Self::Ok, Self::Error>;
-    type SerializeTupleStruct = Impossible<Self::Ok, Self::Error>;
+    type SerializeSeq = SeqSerializer<'a, W>;
+    type SerializeTuple = SeqSerializer<'a, W>;
+    type SerializeTupleStruct = SeqSerializer<'a, W>;
     type SerializeTupleVariant = Impossible<Self::Ok, Self::Error>;
     type SerializeMap = MapSerializer<'a, W>;
     type SerializeStruct = MapSerializer<'a, W>;
-    type SerializeStructVariant = Impossible<Self::Ok, Self::Error>;
+    type SerializeStructVariant = MapSerializer<'a, W>;
 
     fn serialize_bool(self, _v: bool) -> Result<()> {
         Err(Error::TopLevelMap)
@@ -487,7 +523,9 @@ impl<'a, W: Write> ser::Serializer for &'a mut Serializer<W> {
     }
 
     fn serialize_seq(self, _len: Option<usize>) -> Result<Self::SerializeSeq> {
-        Err(Error::TopLevelMap)
+        Ok(SeqSerializer {
+            writer: &mut self.writer,
+        })
     }
 
     fn serialize_tuple(self, len: usize) -> Result<Self::SerializeTuple> {
@@ -515,8 +553,8 @@ impl<'a, W: Write> ser::Serializer for &'a mut Serializer<W> {
         self.serialize_map(Some(len))
     }
 
-    fn serialize_struct_variant(self, _name: &'static str, _variant_index: u32, _variant: &'static str, _len: usize) -> Result<Self::SerializeStructVariant> {
-        Err(Error::TopLevelMap)
+    fn serialize_struct_variant(self, _name: &'static str, _variant_index: u32, variant: &'static str, _len: usize) -> Result<Self::SerializeStructVariant> {
+        open_section(&mut self.writer, variant)
     }
 }
 
@@ -564,6 +602,334 @@ impl<'a, W: Write> ser::SerializeStruct for MapSerializer<'a, W> {
     fn end(self) -> Result<()> {
         Ok(())
     }
+}
+
+impl<'a, W: Write> ser::SerializeStructVariant for MapSerializer<'a, W> {
+    type Ok = ();
+    type Error = Error;
+
+    fn serialize_field<T: ?Sized + Serialize>(&mut self, key: &'static str, value: &T) -> Result<()> {
+        <Self as ser::SerializeStruct>::serialize_field(self, key, value)
+    }
+
+    fn end(self) -> Result<()> {
+        Ok(())
+    }
+}
+
+impl<'a, W: Write> ser::SerializeSeq for SeqSerializer<'a, W> {
+    type Ok = ();
+    type Error = Error;
+
+    fn serialize_element<T: ?Sized + Serialize>(&mut self, value: &T) -> Result<()> {
+        let mut ser = SectionSerializer { writer: self.writer };
+
+        value.serialize(&mut ser)
+    }
+
+    fn end(self) -> Result<()> {
+        Ok(())
+    }
+}
+
+impl<'a, W: Write> ser::SerializeTuple for SeqSerializer<'a, W> {
+    type Ok = ();
+    type Error = Error;
+
+    fn serialize_element<T: ?Sized + Serialize>(&mut self, value: &T) -> Result<()> {
+        <Self as ser::SerializeSeq>::serialize_element(self, value)
+    }
+
+    fn end(self) -> Result<()> {
+        Ok(())
+    }
+}
+
+impl<'a, W: Write> ser::SerializeTupleStruct for SeqSerializer<'a, W> {
+    type Ok = ();
+    type Error = Error;
+
+    fn serialize_field<T: ?Sized + Serialize>(&mut self, value: &T) -> Result<()> {
+        <Self as ser::SerializeSeq>::serialize_element(self, value)
+    }
+
+    fn end(self) -> Result<()> {
+        Ok(())
+    }
+}
+
+impl<'a, W: Write> ser::Serializer for &'a mut SectionSerializer<'a, W> {
+    type Ok = ();
+    type Error = Error;
+
+    type SerializeSeq = Impossible<Self::Ok, Self::Error>;
+    type SerializeTuple = Impossible<Self::Ok, Self::Error>;
+    type SerializeTupleStruct = Impossible<Self::Ok, Self::Error>;
+    type SerializeTupleVariant = Impossible<Self::Ok, Self::Error>;
+    type SerializeMap = Impossible<Self::Ok, Self::Error>;
+    type SerializeStruct = Impossible<Self::Ok, Self::Error>;
+    type SerializeStructVariant = MapSerializer<'a, W>;
+
+    fn serialize_bool(self, _v: bool) -> Result<()> {
+        Err(Error::ExpectedSection)
+    }
+
+    fn serialize_i8(self, _v: i8) -> Result<()> {
+        Err(Error::ExpectedSection)
+    }
+
+    fn serialize_i16(self, _v: i16) -> Result<()> {
+        Err(Error::ExpectedSection)
+    }
+
+    fn serialize_i32(self, _v: i32) -> Result<()> {
+        Err(Error::ExpectedSection)
+    }
+
+    fn serialize_i64(self, _v: i64) -> Result<()> {
+        Err(Error::ExpectedSection)
+    }
+
+    fn serialize_u8(self, _v: u8) -> Result<()> {
+        Err(Error::ExpectedSection)
+    }
+
+    fn serialize_u16(self, _v: u16) -> Result<()> {
+        Err(Error::ExpectedSection)
+    }
+
+    fn serialize_u32(self, _v: u32) -> Result<()> {
+        Err(Error::ExpectedSection)
+    }
+
+    fn serialize_u64(self, _v: u64) -> Result<()> {
+        Err(Error::ExpectedSection)
+    }
+
+    fn serialize_f32(self, _v: f32) -> Result<()> {
+        Err(Error::ExpectedSection)
+    }
+
+    fn serialize_f64(self, _v: f64) -> Result<()> {
+        Err(Error::ExpectedSection)
+    }
+
+    fn serialize_char(self, _v: char) -> Result<()> {
+        Err(Error::ExpectedSection)
+    }
+
+    fn serialize_str(self, _v: &str) -> Result<()> {
+        Err(Error::ExpectedSection)
+    }
+
+    fn serialize_bytes(self, _v: &[u8]) -> Result<()> {
+        Err(Error::ExpectedSection)
+    }
+
+    fn serialize_none(self) -> Result<()> {
+        Err(Error::ExpectedSection)
+    }
+
+    fn serialize_some<T: ?Sized + Serialize>(self, value: &T) -> Result<()> {
+        value.serialize(self)
+    }
+
+    fn serialize_unit(self) -> Result<()> {
+        Err(Error::ExpectedSection)
+    }
+
+    fn serialize_unit_struct(self, _name: &'static str) -> Result<()> {
+        Err(Error::ExpectedSection)
+    }
+
+    fn serialize_unit_variant(self, _name: &'static str, _variant_index: u32, _variant: &'static str) -> Result<()> {
+        Err(Error::ExpectedSection)
+    }
+
+    fn serialize_newtype_struct<T: ?Sized + Serialize>(self, _name: &'static str, _value: &T) -> Result<()> {
+        Err(Error::ExpectedSection)
+    }
+
+    fn serialize_newtype_variant<T: ?Sized + Serialize>(self, _name: &'static str, _variant_index: u32, variant: &'static str, value: &T) -> Result<()> {
+        self.writer.write(&Item::Section {
+            name: variant.into()
+        })?;
+
+        let mut ser = ValuesSerializer { writer: self.writer };
+
+        value.serialize(&mut ser)
+    }
+
+    fn serialize_seq(self, _len: Option<usize>) -> Result<Self::SerializeSeq> {
+        Err(Error::ExpectedSection)
+    }
+
+    fn serialize_tuple(self, _len: usize) -> Result<Self::SerializeTuple> {
+        Err(Error::ExpectedSection)
+    }
+
+    fn serialize_tuple_struct(self, _name: &'static str, _len: usize) -> Result<Self::SerializeTupleStruct> {
+        Err(Error::ExpectedSection)
+    }
+
+    fn serialize_tuple_variant(self, _name: &'static str, _variant_index: u32, _variant: &'static str, _len: usize) -> Result<Self::SerializeTupleVariant> {
+        Err(Error::ExpectedSection)
+    }
+
+    fn serialize_map(self, _len: Option<usize>) -> Result<Self::SerializeMap> {
+        Err(Error::ExpectedSection)
+    }
+
+    fn serialize_struct(self, _name: &'static str, _len: usize) -> Result<Self::SerializeStruct> {
+        Err(Error::ExpectedSection)
+    }
+
+    fn serialize_struct_variant(self, _name: &'static str, _variant_index: u32, variant: &'static str, _len: usize) -> Result<Self::SerializeStructVariant> {
+        open_section(self.writer, variant)
+    }
+}
+
+impl<'a, W: Write> ser::Serializer for &'a mut ValuesSerializer<'a, W> {
+    type Ok = ();
+    type Error = Error;
+
+    type SerializeSeq = Impossible<Self::Ok, Self::Error>;
+    type SerializeTuple = Impossible<Self::Ok, Self::Error>;
+    type SerializeTupleStruct = Impossible<Self::Ok, Self::Error>;
+    type SerializeTupleVariant = Impossible<Self::Ok, Self::Error>;
+    type SerializeMap = MapSerializer<'a, W>;
+    type SerializeStruct = MapSerializer<'a, W>;
+    type SerializeStructVariant = Impossible<Self::Ok, Self::Error>;
+
+    fn serialize_bool(self, _v: bool) -> Result<()> {
+        Err(Error::ExpectedValues)
+    }
+
+    fn serialize_i8(self, _v: i8) -> Result<()> {
+        Err(Error::ExpectedValues)
+    }
+
+    fn serialize_i16(self, _v: i16) -> Result<()> {
+        Err(Error::ExpectedValues)
+    }
+
+    fn serialize_i32(self, _v: i32) -> Result<()> {
+        Err(Error::ExpectedValues)
+    }
+
+    fn serialize_i64(self, _v: i64) -> Result<()> {
+        Err(Error::ExpectedValues)
+    }
+
+    fn serialize_u8(self, _v: u8) -> Result<()> {
+        Err(Error::ExpectedValues)
+    }
+
+    fn serialize_u16(self, _v: u16) -> Result<()> {
+        Err(Error::ExpectedValues)
+    }
+
+    fn serialize_u32(self, _v: u32) -> Result<()> {
+        Err(Error::ExpectedValues)
+    }
+
+    fn serialize_u64(self, _v: u64) -> Result<()> {
+        Err(Error::ExpectedValues)
+    }
+
+    fn serialize_f32(self, _v: f32) -> Result<()> {
+        Err(Error::ExpectedValues)
+    }
+
+    fn serialize_f64(self, _v: f64) -> Result<()> {
+        Err(Error::ExpectedValues)
+    }
+
+    fn serialize_char(self, _v: char) -> Result<()> {
+        Err(Error::ExpectedValues)
+    }
+
+    fn serialize_str(self, _v: &str) -> Result<()> {
+        Err(Error::ExpectedValues)
+    }
+
+    fn serialize_bytes(self, _v: &[u8]) -> Result<()> {
+        Err(Error::ExpectedValues)
+    }
+
+    fn serialize_none(self) -> Result<()> {
+        Err(Error::ExpectedValues)
+    }
+
+    fn serialize_some<T: ?Sized + Serialize>(self, value: &T) -> Result<()> {
+        value.serialize(self)
+    }
+
+    fn serialize_unit(self) -> Result<()> {
+        Err(Error::ExpectedValues)
+    }
+
+    fn serialize_unit_struct(self, _name: &'static str) -> Result<()> {
+        Err(Error::ExpectedValues)
+    }
+
+    fn serialize_unit_variant(self, _name: &'static str, _variant_index: u32, variant: &'static str) -> Result<()> {
+        self.serialize_str(variant)
+    }
+
+    fn serialize_newtype_struct<T: ?Sized + Serialize>(self, _name: &'static str, value: &T) -> Result<()> {
+        value.serialize(self)
+    }
+
+    fn serialize_newtype_variant<T: ?Sized + Serialize>(self, _name: &'static str, _variant_index: u32, _variant: &'static str, _value: &T) -> Result<()> {
+        Err(Error::ExpectedValues)
+    }
+
+    fn serialize_seq(self, _len: Option<usize>) -> Result<Self::SerializeSeq> {
+        Err(Error::ExpectedValues)
+    }
+
+    fn serialize_tuple(self, len: usize) -> Result<Self::SerializeTuple> {
+        self.serialize_seq(Some(len))
+    }
+
+    fn serialize_tuple_struct(self, _name: &'static str, len: usize) -> Result<Self::SerializeTupleStruct> {
+        self.serialize_seq(Some(len))
+    }
+
+    fn serialize_tuple_variant(self, _name: &'static str, _variant_index: u32, _variant: &'static str, _len: usize) -> Result<Self::SerializeTupleVariant> {
+        Err(Error::ExpectedValues)
+    }
+
+    fn serialize_map(self, _len: Option<usize>) -> Result<Self::SerializeMap> {
+        Ok(MapSerializer {
+            writer: &mut self.writer,
+            key: None,
+            top_level: false,
+            allow_values: false,
+        })
+    }
+
+    fn serialize_struct(self, _name: &'static str, len: usize) -> Result<Self::SerializeStruct> {
+        self.serialize_map(Some(len))
+    }
+
+    fn serialize_struct_variant(self, _name: &'static str, _variant_index: u32, _variant: &'static str, _len: usize) -> Result<Self::SerializeStructVariant> {
+        Err(Error::ExpectedValues)
+    }
+}
+
+fn open_section<'a, W: Write + 'a>(writer: &'a mut Writer<W>, name: &str) -> Result<MapSerializer<'a, W>> {
+    writer.write(&Item::Section {
+        name: name.into()
+    })?;
+
+    Ok(MapSerializer {
+        writer: writer,
+        key: None,
+        top_level: false,
+        allow_values: false,
+    })
 }
 
 pub fn to_writer<W: Write, T: Serialize + ?Sized>(writer: W, value: &T) -> Result<()> {
