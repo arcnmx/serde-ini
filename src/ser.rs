@@ -194,7 +194,8 @@ impl<'a, 'k, W: Write + 'a> ser::Serializer for ValueSerializer<'a, 'k, W> {
     }
 
     fn serialize_none(self) -> Result<()> {
-        Err(UnsupportedType::None.into())
+        // Skip empty sections
+        Ok(())
     }
 
     fn serialize_some<T: ?Sized + Serialize>(self, value: &T) -> Result<()> {
