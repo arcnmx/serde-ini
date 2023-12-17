@@ -19,6 +19,9 @@ name=Ana
 
 [Person]
 name=Box
+
+[Person]
+name:Callie
 ";
 
 fn expected() -> Vec<TestModel> {
@@ -28,6 +31,9 @@ fn expected() -> Vec<TestModel> {
         },
         TestModel::Person {
             name: "Box".into(),
+        },
+        TestModel::Person {
+            name: "Callie".into(),
         },
     ]
 }
