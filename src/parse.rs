@@ -131,7 +131,7 @@ impl<T> Parser<T> {
                 text: line.into(),
             }))
         } else {
-            let mut line = line.splitn(2, '=');
+            let mut line = line.splitn(2, |c| c == '=' || c == ':');
             if let Some(key) = line.next() {
                 if let Some(value) = line.next() {
                     Ok(Some(Item::Value {
